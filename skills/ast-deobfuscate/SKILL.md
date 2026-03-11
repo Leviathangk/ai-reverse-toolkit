@@ -1,6 +1,8 @@
 ---
 name: ast-deobfuscate
-description: 通用 JS AST 解混淆。当用户说"解混淆"、"还原代码"、"反混淆"、"deobfuscate"、"代码看不懂全是_0x"时使用
+description: 用 Babel AST 还原混淆的 JS 代码（字符串解密、控制流还原、死代码删除）。
+  TRIGGER when: 用户要求解混淆、还原代码、反混淆、deobfuscate，或遇到 _0x 前缀变量、大型字符串数组、switch-case 控制流平坦化、sojson/OB 混淆等需要 AST 处理的代码。也包括"这段代码看不懂"、"代码全是乱码"、"还原一下这个 JS"。
+  DO NOT TRIGGER when: 代码只是 minified（压缩但未混淆），或用户只想格式化/美化代码。
 argument-hint: [混淆代码文件路径或 URL]
 ---
 

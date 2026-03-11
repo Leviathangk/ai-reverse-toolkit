@@ -1,6 +1,8 @@
 ---
 name: find-crypto-entry
-description: 定位 JS 中参数的生成入口。当用户问"xxx 参数在哪生成"、"找加密入口"、"定位签名函数"、"请求参数怎么加密的"时使用
+description: 定位 JS 加密参数的生成入口（函数位置+调用链）。
+  TRIGGER when: 用户提到请求中的加密字段、签名参数、token生成、加密入口，或要求分析请求头/URL/Body中某个参数怎么来的。包括但不限于"找加密入口"、"xxx在哪生成"、"请求头里的xxx"、"签名怎么算的"、"这个token哪来的"、"定位加密函数"。
+  DO NOT TRIGGER when: 用户只是想看请求内容、抓包、或分析非加密的普通参数。
 argument-hint: [参数名]
 ---
 
@@ -8,130 +10,63 @@ argument-hint: [参数名]
 
 定位加密参数 **$ARGUMENTS** 的生成入口。
 
-**输出目标**：入口位置（脚本URL + 行号/列号 + 函数名）
+**目标**：找到生成该参数的函数位置（脚本 URL + 行列号 + 函数名 + 调用路径）。
 
 ---
 
-## 执行流程
+## 策略选择
 
-### Step 0: 网络请求定位（首选）⭐
+根据信号选择策略，不要按固定顺序执行：
 
-最高效路径，直接获取已发生请求的调用栈：
+**优先静态搜索**：用 `search_in_sources` 搜参数名（带 `excludeMinified=false`）。大多数情况下直接找到赋值位置，然后读上下文追溯来源。
 
-1. `list_network_requests({ resourceTypes: ["xhr", "fetch"] })` - 列出请求
-2. `get_network_request(reqid)` - 确认 **$ARGUMENTS** 参数位置（URL/Header/Body）
-3. `get_request_initiator(requestId)` - **直接获取 JS 调用栈**
+**静态搜不到时用 XHR 断点**：`break_on_xhr` 设在请求 URL 特征上，刷新页面触发。断点命中后从调用栈中找业务代码帧，用 `evaluate_on_callframe` 检查变量。
 
-**结果判断**：
-- ✅ 调用栈有效 → 跳到 **Step 3**
-- ❌ 调用栈为空或无意义 → 继续 **Step 1**
+**两种策略可以组合**：先静态搜索定位赋值位置，再在赋值处设断点动态验证。
 
 ---
 
-### Step 1: 静态搜索
+## 领域知识
 
-当 Step 0 无法定位时，进行静态分析：
+agent 在逆向分析中容易踩的坑，这些是无法通过推理得出的经验：
 
-1. `search_in_sources({ query: "$ARGUMENTS" })` - 搜索加密参数名
+### 加密参数的 3 种常见架构
 
-2. **分流逻辑**：
-   - 结果 ≤ 50：检查赋值语句（如 `headers.$ARGUMENTS = ...`）
-   - 结果 > 50：转向搜索拦截器特征：
-     - `interceptors.request.use`
-     - `XMLHttpRequest.prototype.send`
-     - `window.fetch =`
+1. **业务代码直接赋值** — 在请求函数中 `headers["x-sign"] = encrypt(data)`。静态搜索直接找到。
+2. **请求拦截器统一加签** — axios interceptor 或 fetch wrapper 中统一添加。搜参数名可能只在拦截器中出现一次。
+3. **外部安全 SDK** — 独立 JS 文件（通常混淆）挂载全局对象（如 `window.h5sign`），业务代码调用其方法。静态搜索能找到调用处，但 SDK 内部代码全被混淆。
 
-3. `find_in_script(scriptId, query)` - 获取精确行号列号
+### OB 混淆的影响
 
-**结果判断**：
-- ✅ 找到明确赋值位置 → 跳到 **Step 4**
-- ❌ 结果太多或无法确定 → 继续 **Step 2**
+当加密逻辑在 OB 混淆的文件中（特征：`_0x` 前缀、大型字符串数组、RC4 解密函数），**所有字符串都被加密**，静态搜索在该文件内无法匹配任何明文。但调用该文件的业务代码通常未混淆，从业务代码侧搜索更高效。
 
----
+### XHR 断点命中时的堆栈特点
 
-### Step 2: 动态断点
-
-静态搜索无法锁定时，设置断点：
-
-**方案 A**（推荐）：
-```
-set_breakpoint_on_text({ text: "$ARGUMENTS", urlFilter: "main" })
-```
-
-**方案 B**：
-```
-break_on_xhr({ url: "api关键词" })
-```
-
-⚠️ 提示用户：**请在浏览器中触发包含 $ARGUMENTS 参数的请求**
-
-**结果判断**：
-- ✅ 断点命中 → 继续 **Step 3**
-- ❌ 断点未命中 → 检查断点条件是否正确，或尝试其他方案
+XHR 断点命中在 `send()` 调用处，调用栈底部通常是框架代码（axios/fetch wrapper）。加密逻辑在栈的中上层。直接跳过底部框架帧，关注业务代码帧。
 
 ---
 
-### Step 3: 堆栈分析
+## 反模式
 
-获取调用栈后，执行灰名单过滤：
-
-```
-get_paused_info({ includeScopes: true })
-```
-
-**过滤规则**：
-
-| 级别 | 特征 | 动作 |
-|-----|------|------|
-| Level 1 跳过 | `axios`, `react-dom`, `vue`, `jquery`, `webpack/runtime` | 框架噪声，跳过 |
-| Level 2 检查 | 含 `security`, `encrypt`, `auth`, `fingerprint` 的 node_modules | 可疑安全SDK，检查 |
-| Level 3 优先 | 非 node_modules（`/src/`, `/app/`） | 业务代码，优先检查 |
-
-**结果判断**：
-- ✅ 找到可疑帧 → 继续 **Step 4**
-- ❌ 全是框架代码 → 返回 **Step 2** 尝试其他断点位置
+- **不要反复 step_into** — 容易掉进框架响应式系统（Vue reactivity、React fiber）。用 `evaluate_on_callframe` 直接检查变量比单步跟踪高效得多。
+- **不要在 OB 混淆文件中搜字符串** — 所有明文都被加密了，搜不到。从非混淆的调用方搜。
+- **不要频繁刷新页面** — 每次刷新所有 scriptId 失效。设好断点再刷新，一次到位。
+- **断点命中时优先用 `evaluate_on_callframe` 指定帧** — `evaluate_script` 在暂停时会自动 fallback 到顶层帧，但如果需要检查特定调用帧的变量，必须用 `evaluate_on_callframe` 指定 `frameIndex`。
 
 ---
 
-### Step 4: 确认入口
+## 完成标准
 
-在可疑帧上验证：
-
-```
-evaluate_on_callframe({
-  expression: "arguments",
-  frameIndex: 0
-})
-```
-
-寻找加密特征：
-- 位运算：`^`, `&`, `|`, `>>>`
-- 魔法常量：`0x67452301`(MD5), `0x6a09e667`(SHA256)
-
-**结果判断**：
-- ✅ 确认是加密入口 → 输出结果
-- ❌ 不是加密逻辑 → 检查调用栈上一帧，或返回 **Step 3** 检查其他帧
-
----
-
-## 输出格式
-
-找到入口后，输出：
+找到以下信息即为完成：
 
 ```
 入口位置：
 - 参数：$ARGUMENTS
 - 脚本：https://example.com/static/js/main.abc123.js
-- 位置：第 1 行，第 45678 列
-- 函数：anonymous (或具体函数名)
+- 位置：第 X 行，第 Y 列
+- 函数：functionName (或 anonymous)
 - 调用路径：request → addSign → encrypt
+- 加密类型：[标准算法名 | 外部SDK | 未知/需解混淆]
 ```
 
----
-
-## 注意事项
-
-1. **优先使用 `get_request_initiator`** - 无需断点，最高效
-2. **优先使用 `set_breakpoint_on_text`** - 对压缩代码友好
-3. **只找入口，不做算法还原** - 保持 skill 单一职责
-4. **每个 Step 失败后有明确跳转** - 避免卡住
+只找入口，不做算法还原。

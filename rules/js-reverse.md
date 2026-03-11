@@ -1,6 +1,6 @@
-# JS 逆向分析指南
+# JS 逆向分析技术手册
 
-本文档提供 JS 逆向分析的详细流程和技术参考。
+本文档提供 JS 逆向分析的技术流程和参考。文件组织和目录规范见 `CLAUDE.md`。
 
 ---
 
@@ -10,13 +10,10 @@
 
 **目标**: 找到包含加密参数的请求
 
-**步骤**:
 1. 使用 `list_network_requests` 查看网络请求
 2. 筛选 XHR/Fetch 请求
 3. 识别加密参数（常见：x-sign, x-token, signature, _signature）
 4. 记录请求 URL、方法、参数结构
-
-**产出**: 在 PROGRESS.md 记录目标请求信息
 
 ---
 
@@ -45,8 +42,6 @@
 2. 观察参数设置位置
 3. 追溯调用栈
 ```
-
-**产出**: 记录入口函数名、文件、行号
 
 ---
 
@@ -78,8 +73,6 @@
 | `ipad/opad` 或 `0x36/0x5c` | HMAC |
 | 大数运算、RSA 关键字 | RSA |
 
-**产出**: 记录混淆类型、算法类型、关键函数列表
-
 ---
 
 ### 阶段 4: 解混淆
@@ -90,24 +83,10 @@
 
 **常用操作**:
 
-1. **字符串数组还原**
-   - 提取字符串数组
-   - 替换所有索引访问为实际字符串
-
-2. **常量折叠**
-   - 计算可求值的表达式
-   - `1 + 2 + 3` → `6`
-
-3. **控制流还原**
-   - 分析 switch-case 状态机
-   - 按执行顺序重排代码块
-
-4. **死代码移除**
-   - 删除永远不执行的分支
-   - 删除无用变量
-
-**脚本保存**: `scripts/deobfuscate_{目标}.js`
-**产出保存**: `source/deobfuscated/{文件名}_deobf.js`
+1. **字符串数组还原** — 提取字符串数组，替换所有索引访问为实际字符串
+2. **常量折叠** — 计算可求值的表达式（`1 + 2 + 3` → `6`）
+3. **控制流还原** — 分析 switch-case 状态机，按执行顺序重排代码块
+4. **死代码移除** — 删除永远不执行的分支和无用变量
 
 ---
 
@@ -139,24 +118,16 @@ def to_int32(x):
 - AES: `pycryptodome` 或 `cryptography`
 - Base64: `base64.b64encode/b64decode()`
 
-**产出保存**: `output/sign.py`
-
 ---
 
 ### 阶段 6: 验证测试
 
 **目标**: 确认 Python 实现正确
 
-**验证方法**:
 1. 使用相同输入，对比 JS 和 Python 输出
-2. 测试多组数据
+2. 测试多组数据（至少 3 组不同输入）
 3. 测试边界情况
-
-**验证通过标准**:
-- 至少 3 组不同输入产出一致
-- 实际请求测试成功
-
-**产出**: 在 PROGRESS.md 记录验证结果
+4. 实际请求测试成功
 
 ---
 
@@ -173,18 +144,14 @@ def to_int32(x):
 1. 定位字节码数组和解释器
 2. Hook switch 分支，映射操作码
 3. 构建操作码表
-4. 反汇编字节码
-5. 还原高级逻辑
+4. 反汇编字节码，按函数分割
+5. 逐函数还原高级逻辑
 
 ---
 
 ### WASM 分析
 
-**工具链**:
-- `wasm2wat`: 转文本格式
-- `wasm-objdump`: 查看结构
-- `wasm-decompile`: 反编译
-- ghidra-mcp: 深度分析
+**工具链**: `wasm2wat`, `wasm-objdump`, `wasm-decompile`, ghidra-mcp
 
 **分析步骤**:
 1. 提取 .wasm 文件
@@ -206,13 +173,7 @@ result = instance.exports.encrypt(data)
 
 ### 环境检测/指纹
 
-**常见检测项**:
-- Navigator: userAgent, platform, plugins
-- Screen: width, height, colorDepth
-- Canvas: toDataURL 指纹
-- WebGL: 渲染器信息
-- Audio: AudioContext 指纹
-- 字体: 文本宽度测量
+**常见检测项**: Navigator, Screen, Canvas, WebGL, Audio, 字体
 
 **分析方法**:
 1. Hook 关键 API 观察调用
