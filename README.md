@@ -65,6 +65,12 @@ Use the markdown files directly as system prompts or context.
 |------|-------------|
 | `js-reverse.md` | JS 逆向分析技术手册：6 阶段流程、混淆/算法识别表、MCP 工具速查、高级场景（VM/WASM） |
 
+## Demo Video
+
+> **AI 全链路逆向知乎 x-zse-96 签名**（15 分钟，3 条指令）
+
+[▶ 观看完整录屏](https://github.com/zhizhuodemao/ai-reverse-toolkit/releases/download/v0.1.0/demo-zhihu-x-zse-96.mov)
+
 ## Example: Zhihu x-zse-96
 
 3 条指令，15 分钟，全自动完成知乎签名逆向：
