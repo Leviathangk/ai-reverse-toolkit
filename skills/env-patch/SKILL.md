@@ -119,6 +119,11 @@ console.log('签名函数:', typeof window.签名函数名);
 
 ```
 诊断报告
+├── [HANG] 进程卡死/无输出 → 参考 references/anti-debug.md
+│   ├── setInterval debugger 死循环 → hook setInterval 过滤
+│   ├── eval/Function 动态生成 debugger → hook eval + Function 剥离
+│   └── 同步 while(true) → 定位源码，run.js 中 patch 全局
+│
 ├── [ERRORS] → 必须立即修复
 │   ├── TypeError: xxx is not a function → 补对应方法
 │   ├── xxx is not defined → 补全局变量/构造函数
@@ -169,6 +174,7 @@ module.exports = function sign(url, data) {
 
 | 文件 | 何时读取 |
 |------|---------|
+| `references/anti-debug.md` | 进程卡死/极慢，或已知目标有 debugger 反调试 |
 | `references/browser-stubs.md` | 需要补存根时，查找规范写法 |
 | `references/node-detection.md` | 签名降级（长度/前缀与浏览器不一致） |
 | `references/multi-file.md` | SDK + 字节码分离、多解释器场景 |
